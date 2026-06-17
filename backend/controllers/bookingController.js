@@ -145,26 +145,37 @@ const findNearbyHandyman = async (req, res) => {
   try {
     const { serviceId, longitude, latitude, radiusInKm = 10 } = req.query;
 
-    if (!serviceId || !longitude || !latitude) {
-      return res.status(400).json({ success: false, message: "serviceId, longitude, latitude are required" });
+    if (!serviceId) {
+      return res.status(400).json({ success: false, message: "serviceId is required" });
     }
 
-    // Coordinates are [lng, lat]
-    const handymen = await Employee.find({
+    let query = {
       service: serviceId,
       approveStatus: true,
       isAvailable: true,
-      location: {
-        $near: {
-          $geometry: {
-            type: "Point",
-            coordinates: [parseFloat(longitude), parseFloat(latitude)],
-          },
-          $maxDistance: parseFloat(radiusInKm) * 1000, // Distance in meters
-        },
-      },
-    }).select("-password");
+    };
 
+    if (longitude && latitude) {
+      try {
+        query.location = {
+          $near: {
+            $geometry: {
+              type: "Point",
+              coordinates: [parseFloat(longitude), parseFloat(latitude)],
+            },
+            $maxDistance: parseFloat(radiusInKm) * 1000, // Distance in meters
+          },
+        };
+        const handymen = await Employee.find(query).select("-password");
+        return res.json({ success: true, handymen });
+      } catch (err) {
+        console.log("Geospatial index missing, falling back to service specialty matching...");
+      }
+    }
+
+    // Fallback: match by service specialty and availability only
+    delete query.location;
+    const handymen = await Employee.find(query).select("-password");
     res.json({ success: true, handymen });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

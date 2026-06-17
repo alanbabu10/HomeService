@@ -64,6 +64,10 @@ app.use('/api/reviews', reviewRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/admin', adminRoutes);
 
+// Public CMS Content Route
+const { getCms } = require("./controllers/adminController");
+app.get('/api/cms', getCms);
+
 // Centralized Error Handler
 app.use(errorHandler);
 

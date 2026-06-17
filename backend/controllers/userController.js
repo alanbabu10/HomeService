@@ -39,6 +39,11 @@ const userLogin = async (req, res) => {
     if (!user) {
       return res.status(404).json({ success: false, message: "User Not Found" });
     }
+    
+    if (user.isBlocked) {
+      return res.status(403).json({ success: false, message: "Your account has been blocked by an administrator" });
+    }
+
     const isMatch = await bcrypt.compare(password, user.password);
 
     if (!isMatch) {

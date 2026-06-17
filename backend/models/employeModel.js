@@ -71,6 +71,11 @@ const employeSchema = new mongoose.Schema(
       default: "employee",
     },
 
+    isBlocked: {
+      type: Boolean,
+      default: false,
+    },
+
     isAvailable: {
       type: Boolean,
       default: true,

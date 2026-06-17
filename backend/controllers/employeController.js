@@ -60,6 +60,10 @@ const employeeLogin = async (req, res) => {
       return res.status(404).json({ success: false, message: "Employee not found" });
     }
 
+    if (employee.isBlocked) {
+      return res.status(403).json({ success: false, message: "Your provider account has been blocked by an administrator" });
+    }
+
     const isMatch = await bcrypt.compare(password, employee.password);
     if (!isMatch) {
       return res.status(401).json({ success: false, message: "Invalid credentials" });
