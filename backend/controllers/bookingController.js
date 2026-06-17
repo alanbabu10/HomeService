@@ -3,6 +3,8 @@ const Employee = require("../models/employeModel");
 const Service = require("../models/serviceModel");
 const Invoice = require("../models/invoiceModel");
 const Wallet = require("../models/walletModel");
+const Payment = require("../models/paymentModel");
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY || "sk_test_mock_key");
 const { sendRealtimeNotification } = require("../config/socket");
 
 // Create Booking
@@ -22,6 +24,30 @@ const createBooking = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "All required fields must be filled",
+      });
+    }
+
+    const bookingDate = new Date(date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    bookingDate.setHours(0, 0, 0, 0);
+    if (bookingDate < today) {
+      return res.status(400).json({
+        success: false,
+        message: "Booking date cannot be in the past",
+      });
+    }
+
+    const existingBooking = await Booking.findOne({
+      employee: employeeId,
+      date: new Date(date),
+      time: time,
+      status: { $nin: ["cancelled", "rejected"] }
+    });
+    if (existingBooking) {
+      return res.status(400).json({
+        success: false,
+        message: "This employee is already booked for the selected date and time slot.",
       });
     }
 
@@ -96,6 +122,38 @@ const updateBookingStatus = async (req, res) => {
 
     booking.status = status;
     await booking.save();
+
+    // If booking is cancelled, trigger refund
+    if (status === "cancelled") {
+      const payment = await Payment.findOne({ booking: booking._id, status: "completed" });
+      if (payment) {
+        let wallet = await Wallet.findOne({ user: booking.user._id });
+        if (!wallet) {
+          wallet = await Wallet.create({ user: booking.user._id, balance: 0, transactions: [] });
+        }
+
+        wallet.balance += payment.amount;
+        wallet.transactions.push({
+          amount: payment.amount,
+          type: "credit",
+          description: `Refund for cancelled booking ref ${booking._id}`
+        });
+        await wallet.save();
+
+        payment.status = "refunded";
+        await payment.save();
+
+        if (payment.gateway === "stripe" && process.env.STRIPE_SECRET_KEY && process.env.STRIPE_SECRET_KEY !== "sk_test_mock_key") {
+          try {
+            await stripe.refunds.create({
+              payment_intent: payment.transactionId,
+            });
+          } catch (stripeErr) {
+            console.error("Stripe refund failed: ", stripeErr.message);
+          }
+        }
+      }
+    }
 
     // Notify User about status update
     sendRealtimeNotification(
